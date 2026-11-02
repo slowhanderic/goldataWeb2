@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import {
-  Alert, Box, FormControlLabel, MenuItem, Paper, Stack, Switch, TextField, Typography,
+  Alert, Box, Button, FormControlLabel, MenuItem, Paper, Stack, Switch, TextField, Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridColumnVisibilityModel, type GridSortModel } from '@mui/x-data-grid'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -9,6 +9,9 @@ import { api } from '../api/client'
 import type { FieldMeta, ListResult, ModuleMeta } from '../api/types'
 import { useModule } from '../api/useModules'
 import StatusChip from '../components/StatusChip'
+import RecordForm from '../components/RecordForm'
+import { useAuth } from '../auth/AuthContext'
+import AddIcon from '@mui/icons-material/Add'
 import { formatMoney } from '../utils/format'
 import { amountSx } from '../theme'
 
@@ -28,6 +31,8 @@ function hiddenByDefault(f: FieldMeta, m: ModuleMeta): boolean {
 
 function ModuleList({ module: m }: { module: ModuleMeta }) {
   const navigate = useNavigate()
+  const { can } = useAuth()
+  const [creating, setCreating] = useState(false)
   const [params, setParams] = useSearchParams()
   const page = Number(params.get('page') ?? 1)
   const pageSize = Number(params.get('pageSize') ?? 50)
@@ -89,7 +94,12 @@ function ModuleList({ module: m }: { module: ModuleMeta }) {
   const totals = list.data?.totals ?? {}
   return (
     <Stack spacing={1.5}>
-      <Typography variant="h6">{m.title}</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Typography variant="h6" sx={{ flexGrow: 1 }}>{m.title}</Typography>
+        {can(`${m.key}:create`) && m.editFields.length > 0 && (
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating(true)}>新增{m.title}</Button>
+        )}
+      </Box>
       <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField sx={{ maxWidth: 320 }} placeholder="搜索（名称、编号、备注…）" value={search} onChange={(e) => setSearch(e.target.value)} />
         {m.yearColumn && (
@@ -133,6 +143,9 @@ function ModuleList({ module: m }: { module: ModuleMeta }) {
           sx={{ border: 0, '& .MuiDataGrid-row': { cursor: 'pointer' } }}
         />
       </Paper>
+      {creating && (
+        <RecordForm module={m} onClose={() => setCreating(false)} onSaved={(r) => { setCreating(false); navigate(`/m/${m.key}/${r.id}`) }} />
+      )}
       {m.totals.length > 0 && list.data && (
         <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', px: 1 }}>
           <Typography variant="body2" color="text.secondary">共 {list.data.total} 条，合计：</Typography>

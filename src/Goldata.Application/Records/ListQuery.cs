@@ -7,7 +7,7 @@ namespace Goldata.Application.Records;
 public enum ColumnKind { Id, Int, Text, Date, DateTime, Money, Json }
 
 /// <summary>A column of a legacy table, read from <c>information_schema</c> (label = Chinese COMMENT).</summary>
-public sealed record ColumnInfo(string Name, string DataType, string Label, ColumnKind Kind);
+public sealed record ColumnInfo(string Name, string DataType, string Label, ColumnKind Kind, bool Nullable = true, bool HasDefault = true);
 
 public sealed record TableSchema(string Table, IReadOnlyList<ColumnInfo> Columns)
 {

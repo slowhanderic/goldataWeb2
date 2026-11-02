@@ -37,7 +37,22 @@ export interface ModuleMeta {
   fields: FieldMeta[]
   itemFields: FieldMeta[]
   actions: string[]
+  editFields: EditField[]
+  statusLookup: string | null
+  createFrom: CreateLink[]
+  createChildren: CreateLink[]
 }
+
+export type EditInput = 'text' | 'textarea' | 'date' | 'money' | 'select' | 'staff'
+export interface EditField { name: string; label: string; input: EditInput; lookup: string | null; required: boolean }
+export interface CreateLink { module: string; title: string; column: string }
+export interface SaveResult { id: number; eTag: string }
+export interface LookupItem { id: number; item: string; value: string; data: string; parentId: number; ranking: number }
+export interface DependentRef { table: string; column: string; count: number; module: string | null; moduleTitle: string | null }
+export interface RelatedRow { id: number; title: string; status: string | null }
+export interface RelatedGroup { module: string; title: string; column: string; label: string; total: number; rows: RelatedRow[] }
+export interface ParentRef { column: string; label: string; module: string; moduleTitle: string; id: number; title: string }
+export interface RelatedResult { parents: ParentRef[]; children: RelatedGroup[] }
 
 export type Row = Record<string, unknown> & { id: number; _title?: string }
 

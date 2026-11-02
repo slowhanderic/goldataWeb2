@@ -67,8 +67,8 @@ app.Logger.LogInformation("GoldataWeb2 {Env} ({AspNetEnv}); settings file: {File
     app.Configuration["Goldata:Environment"] ?? "?", app.Environment.EnvironmentName, envFile ?? "container env_file");
 
 app.UseForwardedHeaders();
+app.UseSerilogRequestLogging();   // outside the problem handler, so it logs the final status (400/409), not 500
 app.UseGoldataProblems();
-app.UseSerilogRequestLogging();
 app.Use(async (http, next) =>
 {
     http.Response.Headers["X-Request-Id"] = http.TraceIdentifier;

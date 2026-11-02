@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddSingleton<TokenService>();
         services.AddSingleton<AdminService>();
         services.AddSingleton<RecordService>();
+        services.AddSingleton<RecordWriteService>();
         services.AddSingleton<TodoService>();
         services.AddSingleton<LookupService>();
         services.AddSingleton<FileService>();

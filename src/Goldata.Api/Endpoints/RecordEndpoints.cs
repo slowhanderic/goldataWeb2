@@ -32,6 +32,37 @@ public static class RecordEndpoints
             return Results.Ok(detail);
         });
 
+        // ---- writes (P1): create / update (If-Match) / delete / 转交 ----
+        g.MapPost("/modules/{key}", async (string key, SaveBody body, HttpCurrentUser u, RecordWriteService w, CancellationToken ct) =>
+            Results.Ok(await w.CreateAsync(key, body.Values ?? [], body.ParentModule, body.ParentId, u, ct)));
+
+        g.MapPut("/modules/{key}/{id:long}", async (string key, long id, SaveBody body, HttpContext http, HttpCurrentUser u, RecordWriteService w,
+            CancellationToken ct) =>
+        {
+            var r = await w.UpdateAsync(key, id, body.Values ?? [], http.Request.Headers.IfMatch.ToString(), u, ct);
+            http.Response.Headers.ETag = r.ETag;
+            return Results.Ok(r);
+        });
+
+        g.MapDelete("/modules/{key}/{id:long}", async (string key, long id, HttpCurrentUser u, RecordWriteService w, CancellationToken ct) =>
+        {
+            await w.DeleteAsync(key, id, u, ct);
+            return Results.NoContent();
+        });
+
+        g.MapGet("/modules/{key}/{id:long}/dependents", async (string key, long id, HttpCurrentUser u, RecordWriteService w, CancellationToken ct) =>
+            Results.Ok(await w.DependentsAsync(key, id, u, ct)));
+
+        g.MapGet("/modules/{key}/{id:long}/related", async (string key, long id, HttpCurrentUser u, RecordWriteService w, CancellationToken ct) =>
+            Results.Ok(await w.RelatedAsync(key, id, u, ct)));
+
+        g.MapPost("/modules/{key}/{id:long}/handover", async (string key, long id, HandoverBody b, HttpCurrentUser u, RecordWriteService w,
+            CancellationToken ct) =>
+        {
+            await w.HandoverAsync(key, id, b.StatusTo, b.PersonTo, b.Comment, u, ct);
+            return Results.NoContent();
+        });
+
         g.MapGet("/modules/{key}/{id:long}/logs", async (string key, long id, HttpCurrentUser u, RecordService records, CancellationToken ct) =>
             Results.Ok(await records.LogsAsync(key, id, u, ct)));
 
@@ -82,6 +113,9 @@ public static class RecordEndpoints
         g.MapGet("/search", async (string q, string? modules, int? limit, HttpCurrentUser u, RecordService records, CancellationToken ct) =>
             Results.Ok(await records.SearchAsync(q, modules?.Split(',', StringSplitOptions.RemoveEmptyEntries), Math.Clamp(limit ?? 5, 1, 20), u, ct)));
     }
+
+    public sealed record SaveBody(Dictionary<string, string?>? Values, string? ParentModule, long? ParentId);
+    public sealed record HandoverBody(string? StatusTo, string? PersonTo, string? Comment);
 
     public static ListRequest ParseList(IQueryCollection q)
     {

@@ -21,6 +21,10 @@ public sealed class SchemaCache(Db db)
         ["parent_project_id"] = "上级项目", ["time"] = "时间", ["serie"] = "系列", ["employee_id"] = "员工编号",
     };
 
+    /// <summary>All legacy tables (for dependency scans before a delete).</summary>
+    public async Task<IReadOnlyCollection<TableSchema>> AllAsync(CancellationToken ct = default) =>
+        (_tables ?? await LoadAsync(ct)).Values;
+
     private readonly SemaphoreSlim _lock = new(1, 1);
     private Dictionary<string, TableSchema>? _tables;
 
@@ -37,8 +41,8 @@ public sealed class SchemaCache(Db db)
         {
             if (_tables is not null) return _tables;
             await using var c = await db.LegacyAsync(ct);
-            var rows = await c.QueryAsync<(string Table, string Column, string DataType, string Comment)>(new CommandDefinition("""
-                SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_COMMENT
+            var rows = await c.QueryAsync<(string Table, string Column, string DataType, string Comment, string IsNullable, string? Default, string Extra)>(new CommandDefinition("""
+                SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_COMMENT, IS_NULLABLE, COLUMN_DEFAULT, EXTRA
                 FROM information_schema.COLUMNS
                 WHERE TABLE_SCHEMA = DATABASE()
                 ORDER BY TABLE_NAME, ORDINAL_POSITION
@@ -46,7 +50,9 @@ public sealed class SchemaCache(Db db)
             _tables = rows.GroupBy(r => r.Table, StringComparer.OrdinalIgnoreCase).ToDictionary(
                 g => g.Key,
                 g => new TableSchema(g.Key, g.Select(r => new ColumnInfo(
-                    r.Column, r.DataType, Label(r.Column, r.Comment), ListQueryBuilder.KindOf(r.Column, r.DataType))).ToList()),
+                    r.Column, r.DataType, Label(r.Column, r.Comment), ListQueryBuilder.KindOf(r.Column, r.DataType),
+                    Nullable: r.IsNullable == "YES",
+                    HasDefault: r.Default is not null || r.Extra.Contains("auto_increment", StringComparison.OrdinalIgnoreCase))).ToList()),
                 StringComparer.OrdinalIgnoreCase);
             return _tables;
         }

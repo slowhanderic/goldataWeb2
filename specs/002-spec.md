@@ -8,6 +8,8 @@
 
 Rev 3.9 changes: **one env file per environment** (local / UAT / prod, §9.4) replaces docker secrets, `appsettings.Development.json`, user-secrets and the hand-written PHP config. UAT beside prod (§9.10, `db/ops/0004`). DB names configurable (UAT).
 
+Rev 3.10 changes: P1 generic writes — `POST /modules/{key}` (`{values, parentModule?, parentId?}`), `PUT /modules/{key}/{id}` (If-Match), `DELETE /modules/{key}/{id}`, `GET …/dependents`, `GET …/related`, `POST …/handover` (`{statusTo, personTo, comment}`); `/modules` metadata adds `editFields`, `statusLookup`, `createFrom`, `createChildren` (§13).
+
 Rev 3.8 changes: implementation started (§13 status). MUI v9 / MUI X v9 (current majors); own snackbar and native drag-drop instead of notistack/react-dropzone. Module REST paths are `/api/v1/modules/{key}` (§6.1). Layering: DB-backed use cases live in Infrastructure (§2).
 
 Rev 3.7 changes: deployment runbook `deploy/DEPLOYMENT.md` added and must be kept current. Secrets files are `root:<DOC_GID>` 640 (readable by the non-root container). Migrator connection secret. `goldata.sh` command list.
@@ -1042,7 +1044,8 @@ The API uses `ForwardedHeaders` (trusting only the compose subnet), so it sees t
 | DB | `db/` scripts ops 0001–0003, migrations 0001–0004; DbUp runner `--migrate` (journals in `goldata_app`) | Run on MariaDB 10.3.32 (no DB on the build machine) |
 | Auth | Cookie session + security-stamp check per request, antiforgery header, lockout, login audit, forced first password change, bcrypt `$2y$12$` (PHP-compatible), legacy `$2y$10$` verify + rehash | Rate limits tuned on the NAS |
 | Users / roles (M29) | All §6.3 endpoints with §5.4 rules (last admin, self-change, open to-dos, name lock, read-only roles, dry-run diff, 恢复默认, audit); React 用户 / 角色与权限 / 操作日志 tabs | Ranks admin UI (API exists) |
-| Legacy read | Generic list (paging, sort, search, year, closed toggle, totals), detail (+ items, ETag), change log, 转交 history, to-dos (mine/others), global search, lookups, staff | Per-module create/edit (P1+), links, reports, inventory, catalogue |
+| Legacy read | Generic list (paging, sort, search, year, closed toggle, totals), detail (+ items, ETag), change log, 转交 history, to-dos (mine/others), global search, lookups, staff | Reports, inventory, catalogue |
+| Legacy write (P1) | Generic create / edit / delete / 转交 for all modules with a legacy edit page. Fields, dropdown categories and required flags are **generated from the legacy `*-edit.php`** (`ModuleFields.cs`). Values written exactly like PHP (ENT_COMPAT, `0000-00-00`, `0`; DB runs STRICT_TRANS_TABLES). ETag/If-Match (409 on stale, 428 without). Create-from-parent as `insert.php` (项目→合同/预算, 合同→请款/签证/结算). Delete blocked while any FK/link/item/attachment references the record. Related-records panel. Every write → `update_logs`; 转交 → `historys` + status. Verified on the test DB (service + HTTP level, test rows removed) | Many-to-many links with share_amount (P1b), line-item editing (P2), reports (M22) |
 | Files | List, download (RFC 5987 names, ranges), upload (validation, magic bytes, conflict reject/rename, temp + rename, `file_path` + audit), delete to `_recycle` | Round-trip test with PHP on the real share |
 | MCP | `/mcp` Streamable HTTP (stateless), bearer PAT, scopes, HR hidden by default; tools `list_modules`, `search_records`, `get_record`, `list_records`, `get_history`, `my_todos`, `list_lookup`; token page in the UI | Write tools (P3), `read_document_text` |
 | PHP | `legacy-php/overlay`: login bridge, revalidation, banner, hot-fixes for `crud_action.php`, `delete_file.php`, `dropdown/ajax/*` | `php -l` and the test table on the NAS |

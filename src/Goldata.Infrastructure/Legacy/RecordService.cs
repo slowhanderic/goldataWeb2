@@ -20,7 +20,14 @@ public sealed record FieldMeta(string Name, string Label, string Kind);
 public sealed record ModuleMeta(
     string Key, string Title, string Group, string GroupLabel, string[] TitleColumns, string? StatusColumn, string[] ClosedValues,
     string? YearColumn, string DefaultSort, string[] Totals, bool Workflow, bool HasItems, string? ItemsLabel,
-    IReadOnlyList<FileSlot> FileSlots, IReadOnlyList<FieldMeta> Fields, IReadOnlyList<FieldMeta> ItemFields, IReadOnlyList<string> Actions);
+    IReadOnlyList<FileSlot> FileSlots, IReadOnlyList<FieldMeta> Fields, IReadOnlyList<FieldMeta> ItemFields, IReadOnlyList<string> Actions,
+    IReadOnlyList<EditFieldMeta> EditFields, string? StatusLookup, IReadOnlyList<CreateLink> CreateFrom, IReadOnlyList<CreateLink> CreateChildren);
+
+/// <summary>An editable field for the generic form (from the legacy edit page).</summary>
+public sealed record EditFieldMeta(string Name, string Label, string Input, string? Lookup, bool Required);
+
+/// <summary>Create-from-parent link: Module = the other side, Column = FK on the child.</summary>
+public sealed record CreateLink(string Module, string Title, string Column);
 
 public sealed record RecordDetail(
     Dictionary<string, object?> Record, string Title, IReadOnlyList<Dictionary<string, object?>> Items, string ETag);
@@ -51,16 +58,26 @@ public sealed class RecordService(Db db, SchemaCache schemas, SettingsService se
             if (!m.Generic)
             {
                 result.Add(new(m.Key, m.Title, m.Group.ToString(), MenuGroups.Label(m.Group), [], null, [], null, "", [], false, false,
-                    null, [], [], [], actions));
+                    null, [], [], [], actions, [], null, [], []));
                 continue;
             }
             var schema = await schemas.GetAsync(m.Table, ct);
             IReadOnlyList<FieldMeta> itemFields = [];
             if (m.Items is { } it)
                 itemFields = (await schemas.GetAsync(it.Table, ct)).Columns.Select(ToMeta).ToList();
+            var editFields = WriteRules.EditableFields(m, schema)
+                .Select(x => new EditFieldMeta(x.Spec.Column, x.Column.Label, x.Spec.Input.ToString().ToLowerInvariant(), x.Spec.Lookup, x.Spec.Required))
+                .ToList();
+            var createFrom = (ModuleRelations.CreateFrom.GetValueOrDefault(m.Key) ?? [])
+                .Select(p => new CreateLink(p.Parent, ModuleRegistry.Get(p.Parent).Title, p.Column)).ToList();
+            var children = ModuleRelations.CreateFrom
+                .SelectMany(kv => kv.Value.Where(p => p.Parent == m.Key).Select(p => (Child: kv.Key, p.Column)))
+                .Where(x => user.Has(PermissionCatalog.Code(x.Child, "create")))
+                .Select(x => new CreateLink(x.Child, ModuleRegistry.Get(x.Child).Title, x.Column)).ToList();
             result.Add(new(m.Key, m.Title, m.Group.ToString(), MenuGroups.Label(m.Group), m.TitleColumns, m.StatusColumn, m.ClosedValues,
                 m.YearColumn, m.DefaultSort, m.Totals, m.Workflow, m.Items is not null, m.Items?.Label, m.Files,
-                ListQueryBuilder.VisibleColumns(m, schema).Select(ToMeta).ToList(), itemFields, actions));
+                ListQueryBuilder.VisibleColumns(m, schema).Select(ToMeta).ToList(), itemFields, actions,
+                editFields, ModuleFields.StatusLookups.GetValueOrDefault(m.Table), createFrom, children));
         }
         return result;
     }
