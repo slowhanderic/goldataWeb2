@@ -1,0 +1,35 @@
+<?php
+namespace Goldata;
+
+use Goldata\CatProduct;
+// GoldataWeb2 P0 hot-fix: this endpoint had no login check (NFR-SEC-2).
+require_once __DIR__ . '/../../require_login.php';
+\require_login();
+if (! empty($_POST["tag"])) {
+    
+    $tag = $_POST["tag"];
+	
+    
+   require_once __DIR__ . '/../Model/CatProduct.php';
+   $catProduct= new CatProduct();
+
+   $productResult = $catProduct->getProductByTag($tag);
+
+ if(isset($productResult))
+ {
+    foreach ($productResult as $product) 
+	{	
+		
+		 $return_arr[] = array(	"name" => $product["table_name"],
+								"item" => $product["table_item"],
+								"id" => $product["id"],
+								"data" => $product["data"],
+								"value" => $product["value"]
+								);
+
+    }
+ }else	
+	{ $return_arr[] = array();}
+	echo json_encode($return_arr);
+}
+?>

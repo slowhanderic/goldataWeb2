@@ -1,0 +1,99 @@
+{
+  // GoldataWeb2 local debugging. Settings come from deploy/env/local.env (the ONE local settings file).
+  // Start everything:  Run and Debug ▸ "Full stack: API + Web".
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API (.NET, :5080)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "api: build",
+      "program": "${workspaceFolder}/src/Goldata.Api/bin/Debug/net10.0/Goldata.Api",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/Goldata.Api",
+      "env": {
+        "GOLDATA_ENV_FILE": "${workspaceFolder}/deploy/env/local.env",
+        "ASPNETCORE_URLS": "http://localhost:5080",
+        "DOTNET_ROOT": "${env:HOME}/.dotnet"
+      },
+      "stopAtEntry": false,
+      "justMyCode": true,
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "Now listening on:\\s+(https?://\\S+)",
+        "uriFormat": "%s/scalar"
+      }
+    },
+    {
+      "name": "Web (Vite :5173 + Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "preLaunchTask": "web: dev",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/web",
+      "sourceMaps": true,
+      "userDataDir": "${workspaceFolder}/.dev/chrome-profile"
+    },
+    {
+      "name": "Web (Vite :5173 + Edge)",
+      "type": "msedge",
+      "request": "launch",
+      "preLaunchTask": "web: dev",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/web",
+      "sourceMaps": true,
+      "userDataDir": "${workspaceFolder}/.dev/edge-profile"
+    },
+    {
+      "name": "API: migrate goldata_app (--migrate)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "api: build",
+      "program": "${workspaceFolder}/src/Goldata.Api/bin/Debug/net10.0/Goldata.Api",
+      "args": ["--migrate"],
+      "cwd": "${workspaceFolder}/src/Goldata.Api",
+      "env": {
+        "GOLDATA_ENV_FILE": "${workspaceFolder}/deploy/env/local.env",
+        "DOTNET_ROOT": "${env:HOME}/.dotnet"
+      },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "API: import users from login.php (--import-users)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "api: build",
+      "program": "${workspaceFolder}/src/Goldata.Api/bin/Debug/net10.0/Goldata.Api",
+      "args": ["--import-users", "${input:loginPhp}"],
+      "cwd": "${workspaceFolder}/src/Goldata.Api",
+      "env": {
+        "GOLDATA_ENV_FILE": "${workspaceFolder}/deploy/env/local.env",
+        "DOTNET_ROOT": "${env:HOME}/.dotnet"
+      },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "API: attach to running process",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickProcess}"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full stack: API + Web",
+      "configurations": ["API (.NET, :5080)", "Web (Vite :5173 + Chrome)"],
+      "stopAll": true,
+      "presentation": { "group": "1-main", "order": 1 }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "loginPhp",
+      "type": "promptString",
+      "description": "Path to the CURRENT legacy login.php (with the hard-coded accounts)",
+      "default": "${workspaceFolder}/goldataWeb1/web_php_20261020/login.php"
+    }
+  ]
+}

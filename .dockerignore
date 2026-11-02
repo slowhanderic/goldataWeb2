@@ -1,0 +1,11 @@
+**/bin
+**/obj
+**/node_modules
+web/dist
+.dev
+.git
+goldataWeb1
+specs
+tests
+legacy-php
+**/*.sql.gz

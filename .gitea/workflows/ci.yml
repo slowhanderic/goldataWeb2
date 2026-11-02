@@ -1,0 +1,52 @@
+# Gitea Actions (act_runner) — self-hosted CI on the LAN (NFR-LIC-2). Also runs unchanged on GitHub Actions.
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: API tests (incl. 0004 seed drift check)
+        run: dotnet test
+      - name: NuGet licence check (allow-list, 002-spec §1.2)
+        run: |
+          dotnet tool install --global nuget-license
+          ~/.dotnet/tools/nuget-license -i src/Goldata.Api/Goldata.Api.csproj -t -a deploy/licenses-allowed.json -o Table \
+            -fo src/Goldata.Api/THIRD-PARTY-NOTICES.txt
+      - name: Web build, lint, licence check
+        working-directory: web
+        run: |
+          npm ci
+          npm run lint
+          npm run licenses
+          npm run build
+
+  images:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ${{ vars.REGISTRY }}          # e.g. git.example.lan
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+      - name: Build and push (linux/amd64; add linux/arm64 if the NAS needs it — Q14)
+        run: |
+          TAG="${GITHUB_REF_NAME#v}-$(git rev-parse --short HEAD)"
+          docker buildx build -f deploy/api.Dockerfile --platform linux/amd64 -t "$REGISTRY/goldata/goldata-api:$TAG" --push .
+          docker buildx build -f deploy/web.Dockerfile --platform linux/amd64 -t "$REGISTRY/goldata/goldata-web:$TAG" --push .
+          echo "Deploy on the NAS: sudo ./goldata.sh upgrade $TAG"

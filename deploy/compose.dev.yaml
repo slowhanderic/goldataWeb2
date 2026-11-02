@@ -1,0 +1,17 @@
+# Local development: MariaDB 10.3.32 (same as DSM 7.1's MariaDB 10 package) with a SANITISED dump.
+#   docker compose --env-file deploy/env/local.env -f deploy/compose.dev.yaml up -d
+# Then `dotnet run --project src/Goldata.Api` and `cd web && npm run dev` — both read deploy/env/local.env.
+# Never load the real production dump here (NFR-DATA-1).
+
+services:
+  mariadb:
+    image: mariadb:10.3.32
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DEV_DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_LEGACY_NAME}
+    command: ["--character-set-server=utf8", "--collation-server=utf8_general_ci", "--sql-mode=NO_ENGINE_SUBSTITUTION"]
+    ports:
+      - "127.0.0.1:${DB_PORT}:3306"
+    volumes:
+      - ../.dev/mariadb:/var/lib/mysql
+      - ../.dev/sanitised-dump:/docker-entrypoint-initdb.d:ro

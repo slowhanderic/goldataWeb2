@@ -5,9 +5,10 @@
 -- Rollback: DROP USER the three accounts; DROP DATABASE goldata_app (only if nothing else has used it yet).
 --
 -- Before running, replace:
---   <secret-api> / <secret-migrator> / <secret-php>  → three different strong passwords (store them in the NAS secrets files, NOT here)
+--   <secret-api> / <secret-migrator> / <secret-php>  → three different strong passwords = DB_API_PASSWORD / DB_MIGRATOR_PASSWORD /
+--                                                     DB_PHP_AUTH_PASSWORD in the prod .env (deploy/env/prod.env.example), NOT here
 --   <php host>                                        → the address the Web Station PHP connects from ('localhost' if it uses the socket; check in P0)
--- 172.30.10.% is the fixed Docker compose subnet (compose.yaml `networks.goldata`).
+-- 172.30.10.% = NETWORK_SUBNET of the prod .env (compose.yaml `networks.goldata`).
 
 CREATE DATABASE IF NOT EXISTS goldata_app CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 

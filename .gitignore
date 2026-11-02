@@ -1,0 +1,30 @@
+# Build output
+bin/
+obj/
+web/node_modules/
+web/dist/
+*.tsbuildinfo
+.vs/
+.idea/
+.DS_Store
+
+# Local dev data (MariaDB volume, sanitised dumps, docroot, data-protection keys)
+.dev/
+
+# NEVER commit: the legacy PHP source copy and its DB dump (payroll / personal data, credentials) — NFR-DATA-1, NFR-SEC-3
+goldataWeb1/
+*.sql.gz
+*.sql
+!db/**/*.sql
+
+# Env files hold every setting INCLUDING secrets: only the *.env.example templates are committed
+deploy/env/*.env
+.env
+.env.prev
+.env.failed
+legacy-php/goldata_auth.php
+src/Goldata.Api/THIRD-PARTY-NOTICES.txt
+
+# Test runner output
+TestResults/
+**/TestResults/

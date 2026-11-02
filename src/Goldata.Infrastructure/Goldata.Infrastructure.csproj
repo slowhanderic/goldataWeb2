@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Goldata.Application\Goldata.Application.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="MySqlConnector" />
+    <PackageReference Include="BCrypt.Net-Next" />
+    <PackageReference Include="dbup-mysql" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- SQL change history lives in /db (db/README.md); embedded so each image carries its own migrations. -->
+    <EmbeddedResource Include="..\..\db\migrations\goldata_app\*.sql" LogicalName="migrations.goldata_app.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\db\migrations\goldata\*.sql" LogicalName="migrations.goldata.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Goldata.UnitTests" />
+  </ItemGroup>
+</Project>

@@ -21,6 +21,10 @@
 | 3.5 | 2026-11-02 | NAS runs **DSM 7.1** (Docker package, no Container Manager). NFR-DEP-1/2/9 updated, Q14 narrowed. |
 | 3.6 | 2026-11-02 | REQ-CMP-9: every SQL change is a numbered script in `db/`. |
 | 3.7 | 2026-11-02 | NFR-DEP-10: deployment runbook `deploy/DEPLOYMENT.md`, kept current. NFR-DEP-5 wording on secrets file permissions. |
+| 3.8 | 2026-11-02 | Implementation started (spec §13). New decisions to confirm: Q17–Q20. |
+| 3.9 | 2026-11-02 | One env file per environment (local / UAT / prod): NFR-DEP-5 rewritten, NFR-DEP-11 (UAT). Q21. |
+| 3.11 | 2026-11-02 | Q3 resolved: prod 192.168.168.235, local/test 192.168.21.175. |
+| 3.10 | 2026-11-02 | Logins may be 2–32 chars (legacy account `ci`); migration `0005`. |
 
 ---
 
@@ -214,7 +218,7 @@ Today users and roles are hard-coded in `login.php` and permissions in `if` stat
 
 **Users**
 * **REQ-ADM-1 List** all users: login, display name, role, rank, status (active / disabled / locked), must-change-password flag, last login, number of active API tokens. Search and filter by role, rank and status.
-* **REQ-ADM-2 Add user**: login (unique, `a-z 0-9 . _ -`, 3–32 chars), display name, role, rank, and an initial password (generated or typed). The user must change it at first login. The display name must be unique among users. It is what gets written to `user_name`, `historys.person_to/from` and `update_logs.user`, so the form warns if the name is not in the `公司员工` lookup and offers to add it there (a dropdown source for 转交).
+* **REQ-ADM-2 Add user**: login (unique, `a-z 0-9 . _ -`, 2–32 chars; legacy has `ci`), display name, role, rank, and an initial password (generated or typed). The user must change it at first login. The display name must be unique among users. It is what gets written to `user_name`, `historys.person_to/from` and `update_logs.user`, so the form warns if the name is not in the `公司员工` lookup and offers to add it there (a dropdown source for 转交).
 * **REQ-ADM-3 Edit user**: role, rank, active flag. **Display name and login are read-only once the user has logged in or appears in legacy data**, because renaming would break to-dos, ownership and history matching (REQ-ROLE-2). A rename is done by creating a new user and disabling the old one.
 * **REQ-ADM-4 Reset password** (temporary password shown once, forced change), **unlock** after lockout, **revoke** one or all API/MCP tokens.
 * **REQ-ADM-5 Disable / enable**: a disabled user cannot log in. Their sessions and tokens stop working **immediately** (next request), not when the cookie expires.
@@ -281,11 +285,12 @@ Today users and roles are hard-coded in `login.php` and permissions in `if` stat
 | NFR-DEP-2 | Images are built for the NAS CPU (`linux/amd64`; `arm64` only if the model needs it), are Alpine-based so they work with DSM 7.1's older Docker engine, versioned (semver + git SHA) and pulled from a self-hosted open-source registry on the LAN or imported as a tar (NFR-LIC-2). Upgrade and rollback = change the image tag and recreate, in under 5 minutes. |
 | NFR-DEP-3 | HTTPS terminates at the **DSM reverse proxy** with a DSM-managed certificate. The containers publish only one port, bound to `127.0.0.1`. UI, REST and MCP share one host name. |
 | NFR-DEP-4 | The containers use the **existing MariaDB** (no DB container in production) and the **existing `pdf_folder`** (bind mount). They run as the same UID:GID as the PHP Web Station files. |
-| NFR-DEP-5 | No secrets in images, `compose.yaml`, `.env` or the Docker package UI. Secrets come from files on the NAS readable only by root and the container's group (docker secrets). |
+| NFR-DEP-5 | **One settings file per environment** (`deploy/env/{local,uat,prod}.env`): every setting, secrets included, in one place, read identically by docker-compose, `goldata.sh` and the API; the PHP bridge config is generated from it. Only the `*.env.example` templates (no real secrets) are committed. On the NAS the file is `root:root` mode 600. No secrets in images, `compose.yaml` or the Docker package UI. |
 | NFR-DEP-6 | Containers run non-root with a read-only root FS, no added capabilities, memory limits and health checks. They restart automatically after a NAS reboot or DSM update. |
 | NFR-DEP-7 | Backups use DSM tools: nightly DB dumps (Task Scheduler), Snapshot Replication for `pdf_folder`, Hyper Backup offsite for dumps, files and the compose project folder. |
 | NFR-DEP-9 | The compose file works unchanged on DSM 7.1 (docker-compose v1) and DSM 7.2+ (Container Manager / compose v2), so a later DSM upgrade needs no redeploy. Deploy, upgrade, rollback and health checks are scripted (`goldata.sh`) and can run from DSM Task Scheduler. |
 | NFR-DEP-10 | A step-by-step **deployment runbook** (`deploy/DEPLOYMENT.md`) covers first install, PHP changes, smoke test, backups, upgrade, rollback and troubleshooting. Any change affecting installation, configuration, upgrade or rollback updates the runbook in the same commit, with a change-log line. |
+| NFR-DEP-11 | **UAT** runs beside prod on the same NAS and MariaDB with its own project, port, subnet, databases, DB accounts (no rights on prod), document copy and token pepper. It can never write production data or accept production tokens. |
 | NFR-DEP-8 | The legacy PHP app keeps running on the same NAS (Web Station) until P4, unaffected by the containers. |
 | NFR-DATA-1 | The dump contains payroll and personal data. It must never be committed. Test data must be anonymised. |
 
@@ -309,7 +314,7 @@ Today users and roles are hard-coded in `login.php` and permissions in `if` stat
 |---|---|---|
 | ~~Q1~~ | ~~Where is the production source?~~ **Resolved**: the current source was provided on 2026-11-02. | |
 | Q2 | Keep today's broad access (e.g. 采购/预算/工程文员 can open 工装 and 采购 modules, and pages are reachable by URL), or tighten it per module? | Default permission matrix |
-| Q3 | Is **192.168.168.235:3307** production? Is `.230` a replica, another office or obsolete? | Connection config |
+| ~~Q3~~ | **Resolved 2026-11-02:** production = **192.168.168.235** (MariaDB 3307 + live `pdf_folder`). `192.168.21.175` = local/test server (DB copy, documents copy up to 2019-09). `.230` presumed obsolete. | |
 | Q4 | Is 家装报价 (`quotes_retail`, only ~1 record, page not linked from the menu) still needed? | Scope of M9 |
 | Q5 | Inventory: is a 出库 recorded as negative-qty `buy_receipt_items`, or by moving `destination_id`? Is there anything beyond 深圳广泰仓库 + 项目工地 as a warehouse? | Stock calculation |
 | Q6 | Can we convert the DB to `utf8mb4`, or must it stay `utf8`? | Emoji/rare-character support |
@@ -323,3 +328,8 @@ Today users and roles are hard-coded in `login.php` and permissions in `if` stat
 | Q14 | DSM version **known: 7.1**. Still needed: Synology model, RAM, free disk, and the output of `sudo docker version` and `uname -r` (or: is the Docker package installed yet?). Is a later upgrade to DSM 7.2 acceptable? Host name for the new app (e.g. `erp.<domain>`), and is there an internal CA or a public domain for the certificate? | Image architecture, sizing, TLS |
 | ~~Q15~~ | ~~Should PHP read users from `goldata_app`?~~ **Decided 2026-11-02: yes**, see REQ-CMP-8 and spec §5.5. | |
 | Q16 | Brand colours: do you have them, or should they be taken from the goldata logo? (MUI X Pro is ruled out by NFR-LIC-1.) | Theme |
+| Q17 | MCP default access (relates to Q10): implemented as **only 管理 can create MCP tokens, read-only**; nobody has MCP write. Widen to other roles? | Default permission matrix |
+| Q18 | 删除附件: legacy `delete_file.php` let anyone delete. Implemented default: everyone who can **edit** the module can delete its attachments (to the recycle folder). Restrict to 管理 + 总监 instead? | Default permission matrix |
+| Q19 | Default list view: legacy hides records whose status text *contains* a closed value (e.g. 请款 also hides 「未编制」「未递出」), and (because `NULL NOT LIKE …` is never true) also hides records whose status is NULL. Implemented: same closed values, but NULL-status records stay visible. OK? | REQ-LIST-2 parity |
+| Q20 | New staff in 「公司员工」 need a department code (`value`: super / admin / cw / buyer / ys / retail / gc / oa). Implemented: chosen on the add-user form, default by role (总监 → super). Is that mapping right? | Admin page |
+| Q21 | UAT data: a full copy of production (real names, salaries) as implemented in the runbook, or an **anonymised** copy (`db/sanitise`, more work but safer)? Who may access UAT? | UAT data protection |

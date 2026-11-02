@@ -1,0 +1,109 @@
+{
+  // Tasks used by launch.json, plus the other local services (local MariaDB, MCP Inspector, tests, checks).
+  // Terminal ▸ Run Task… to run any of them on their own.
+  "version": "2.0.0",
+  "options": {
+    // The .NET SDK lives in ~/.dotnet on this machine (not on the default PATH).
+    "env": { "PATH": "${env:HOME}/.dotnet:${env:PATH}", "DOTNET_CLI_TELEMETRY_OPTOUT": "1" }
+  },
+  "tasks": [
+    {
+      "label": "env: ensure local.env",
+      "detail": "Creates deploy/env/local.env from the template on first use (then edit DB_HOST / passwords / DOCUMENTS_ROOT)",
+      "type": "shell",
+      "command": "test -f deploy/env/local.env || { cp deploy/env/local.env.example deploy/env/local.env && echo 'Created deploy/env/local.env — edit DB_* and DOCUMENTS_ROOT'; }; mkdir -p .dev/docroot/pdf_folder .dev/keys",
+      "presentation": { "reveal": "silent", "close": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "api: build",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/src/Goldata.Api/Goldata.Api.csproj", "-c", "Debug", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "dependsOn": ["env: ensure local.env"],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "silent" },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "api: watch (hot reload, no debugger)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["watch", "--project", "${workspaceFolder}/src/Goldata.Api", "--launch-profile", "local"],
+      "dependsOn": ["env: ensure local.env"],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "dotnet-watch",
+        "pattern": { "regexp": "^(error):\\s+(.*)$", "severity": 1, "message": 2 },
+        "background": { "activeBegins": true, "beginsPattern": "dotnet watch", "endsPattern": "Now listening on" }
+      }
+    },
+    {
+      "label": "api: test",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test"],
+      "group": "test",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "web: npm install",
+      "type": "shell",
+      "command": "test -d node_modules || npm ci --no-audit --no-fund",
+      "options": { "cwd": "${workspaceFolder}/web" },
+      "presentation": { "reveal": "silent", "close": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "web: dev",
+      "detail": "Vite dev server on :5173; proxies /api, /mcp, /health to API_URL from deploy/env/local.env",
+      "type": "npm",
+      "script": "dev",
+      "path": "web",
+      "dependsOn": ["env: ensure local.env", "web: npm install"],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": { "regexp": "^\\s*(error|Error)[:\\s](.*)$", "severity": 1, "message": 2 },
+        "background": { "activeBegins": true, "beginsPattern": "VITE|vite", "endsPattern": "Local:\\s+http" }
+      }
+    },
+    {
+      "label": "web: check (types + lint + build + licences)",
+      "type": "shell",
+      "command": "npx tsc -b && npx oxlint src && npm run build && npm run licenses",
+      "options": { "cwd": "${workspaceFolder}/web" },
+      "group": "test",
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "db: start local MariaDB 10.3.32 (Docker)",
+      "detail": "Only if DB_HOST=127.0.0.1 in local.env. Needs Docker/Colima and a SANITISED dump in .dev/sanitised-dump",
+      "type": "shell",
+      "command": "docker compose --env-file deploy/env/local.env -f deploy/compose.dev.yaml up -d && docker compose --env-file deploy/env/local.env -f deploy/compose.dev.yaml ps",
+      "dependsOn": ["env: ensure local.env"],
+      "problemMatcher": []
+    },
+    {
+      "label": "db: stop local MariaDB",
+      "type": "shell",
+      "command": "docker compose --env-file deploy/env/local.env -f deploy/compose.dev.yaml down",
+      "problemMatcher": []
+    },
+    {
+      "label": "api: health",
+      "type": "shell",
+      "command": "curl -s http://localhost:5080/health/ready; echo",
+      "presentation": { "reveal": "always" },
+      "problemMatcher": []
+    },
+    {
+      "label": "mcp: inspector",
+      "detail": "Opens the MCP Inspector (MIT). Connect: Streamable HTTP, http://localhost:5080/mcp, header Authorization: Bearer <token from 菜单 ▸ MCP 访问令牌>",
+      "type": "shell",
+      "command": "npx -y @modelcontextprotocol/inspector",
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

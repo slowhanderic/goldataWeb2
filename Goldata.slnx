@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Goldata.Api/Goldata.Api.csproj" />
+    <Project Path="src/Goldata.Application/Goldata.Application.csproj" />
+    <Project Path="src/Goldata.Domain/Goldata.Domain.csproj" />
+    <Project Path="src/Goldata.Infrastructure/Goldata.Infrastructure.csproj" />
+    <Project Path="src/Goldata.Mcp/Goldata.Mcp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Goldata.UnitTests/Goldata.UnitTests.csproj" />
+  </Folder>
+</Solution>

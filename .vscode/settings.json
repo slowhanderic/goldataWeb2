@@ -1,0 +1,7 @@
+{
+  "dotnet.defaultSolution": "Goldata.slnx",
+  "typescript.tsdk": "web/node_modules/typescript/lib",
+  "files.associations": { "*.env.example": "dotenv", "*.env": "dotenv" },
+  "files.exclude": { "**/bin": true, "**/obj": true, "TestResults": true },
+  "search.exclude": { "goldataWeb1/**/*.sql": true, "web/dist": true, "**/node_modules": true }
+}

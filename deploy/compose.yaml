@@ -1,0 +1,69 @@
+# GoldataWeb2 on Synology DSM 7.1 (Docker package, docker-compose v1) — see deploy/DEPLOYMENT.md.
+# ALL settings come from the ONE env file of this environment: `.env` next to this file
+# (copied from deploy/env/prod.env.example or uat.env.example). Compose reads it for ${…} and passes it to the API.
+# Only keys that work in docker-compose v1.27+ AND compose v2 (NFR-DEP-9). No top-level `name:`.
+
+services:
+  api:
+    image: ${REGISTRY}/goldata/goldata-api:${API_TAG}
+    restart: unless-stopped
+    user: "${DOC_UID}:${DOC_GID}"            # same owner as the PHP (Web Station) files — 002-spec §9.6
+    env_file:
+      - .env
+    environment:
+      # Paths inside the container (override the host-side values of the env file).
+      DOCUMENTS_ROOT: /data/docroot
+      DATA_PROTECTION_KEYS: /data/keys
+      LOG_FILE: /data/logs/api-.log
+      FORWARDED_NETWORKS: ${NETWORK_SUBNET}
+      ASPNETCORE_URLS: http://+:8080
+      TZ: Asia/Shanghai
+    volumes:
+      - ${DOC_ROOT}:/data/docroot             # the directory that CONTAINS pdf_folder
+      - ./data/keys:/data/keys
+      - ./data/logs:/data/logs
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      # Fallback only if a glibc image is ever used on DSM 7.1 (002-spec §9.0):
+      # - seccomp=./seccomp-dsm71.json
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "/app/Goldata.Api", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - goldata
+
+  web:
+    image: ${REGISTRY}/goldata/goldata-web:${WEB_TAG}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:${WEB_PORT}:8080"         # only the DSM reverse proxy can reach it
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    networks:
+      - goldata
+
+networks:
+  goldata:
+    ipam:
+      config:
+        - subnet: ${NETWORK_SUBNET}           # fixed per environment, so the MariaDB grants can be narrow

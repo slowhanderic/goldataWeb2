@@ -6,6 +6,10 @@
 | Date | 2026-11-02 |
 | Implements | [001-requirements.md](001-requirements.md) rev 2 |
 
+Rev 3.9 changes: **one env file per environment** (local / UAT / prod, §9.4) replaces docker secrets, `appsettings.Development.json`, user-secrets and the hand-written PHP config. UAT beside prod (§9.10, `db/ops/0004`). DB names configurable (UAT).
+
+Rev 3.8 changes: implementation started (§13 status). MUI v9 / MUI X v9 (current majors); own snackbar and native drag-drop instead of notistack/react-dropzone. Module REST paths are `/api/v1/modules/{key}` (§6.1). Layering: DB-backed use cases live in Infrastructure (§2).
+
 Rev 3.7 changes: deployment runbook `deploy/DEPLOYMENT.md` added and must be kept current. Secrets files are `root:<DOC_GID>` 640 (readable by the non-root container). Migrator connection secret. `goldata.sh` command list.
 
 Rev 3.6 changes: all SQL changes live as numbered scripts in `db/` (§2.1).
@@ -68,8 +72,8 @@ Rev 2 changes: DB host, the role × rank model with bcrypt import, the full cata
 | Excel | ClosedXML | Export |
 | Logging | Serilog + OpenTelemetry | |
 | Front end | **React 19 + TypeScript + Vite** | |
-| UI kit + theme | **MUI** — `@mui/material` v7 + MUI X v8 (`x-data-grid`, `x-date-pickers`, `x-tree-view`), MIT tier; Emotion; versions pinned at project start | Central `createTheme` theme, zh-CN locales for all components, server-mode Data Grid with virtualisation and cell editing |
-| UI helpers | notistack (snackbars), react-dropzone (uploads), dayjs (`zh-cn`) | Not part of MUI core |
+| UI kit + theme | **MUI** — `@mui/material` v9 + MUI X v9 (`x-data-grid`, `x-tree-view`; `x-date-pickers` when forms arrive), MIT tier; Emotion; versions locked in `package-lock.json` | Central `createTheme` theme, zh-CN locales for all components, server-mode Data Grid with virtualisation and cell editing |
+| UI helpers | MUI `Snackbar` wrapper (`Notify.tsx`), native drag-and-drop + XHR upload progress, dayjs (`zh-cn`), React Router, TanStack Query | Fewer dependencies than notistack / react-dropzone |
 | Data fetching | TanStack Query + generated OpenAPI client | |
 | Forms | React Hook Form + Zod | |
 | Tests | xUnit + Testcontainers (MariaDB 10.3), Shouldly, NSubstitute, Vitest, Playwright | All OSS (FluentAssertions v8+ and Moq avoided, see §1.2) |
@@ -94,7 +98,7 @@ Rev 2 changes: DB host, the role × rank model with bcrypt import, the full cata
 | Shouldly · NSubstitute | BSD |
 | React · Vite · TypeScript* · TanStack Query · React Hook Form · Zod · Vitest | MIT (*Apache-2.0) |
 | MUI `@mui/material`, `@mui/icons-material`, `@mui/lab`, `@mui/x-data-grid`, `@mui/x-date-pickers`, `@mui/x-tree-view`, `@mui/x-charts` | MIT (free tier) |
-| Emotion · notistack · react-dropzone · dayjs | MIT |
+| Emotion · dayjs · React Router · TanStack Query | MIT |
 | pdf.js | Apache-2.0 |
 | AG Grid **Community** (fallback only) | MIT |
 | nginx (`nginx-unprivileged`) · Alpine | BSD-2 · MIT/various OSS |
@@ -171,7 +175,9 @@ Every database change for GoldataWeb2 is a numbered file (`NNNN__description.sql
 
 The scripts are embedded in the API image (`EmbeddedResource`), so the deployed version and its migrations always match. CI runs all migrations on a fresh MariaDB 10.3.32 container, and again on a sanitised copy of production, on every build.
 
-Current scripts: `ops/0001` (create `goldata_app` + accounts), `ops/0002` (PHP bridge grants), `goldata_app/0001` (identity tables, §5.1), `0002` (`v_legacy_login`, §5.5), `0003` (seed ranks, roles, settings). The default permission matrix and the user import follow in P0.
+Current scripts: `ops/0001` (create `goldata_app` + accounts), `ops/0002` (PHP bridge grants), `ops/0003` (read-only backup account), `goldata_app/0001` (identity tables, §5.1), `0002` (`v_legacy_login`, §5.5), `0003` (seed ranks, roles, settings), `0004` (default permission matrix, **generated** from `DefaultPermissionMatrix.cs`; a unit test fails if they differ). Users are imported by `--import-users`, never by SQL.
+
+**Layering as built:** `Goldata.Application` holds the module registry, permission catalogue and calculator, list-query builder, admin/password/path rules and the login.php parser — pure, unit-tested. The DB-backed use cases (`AuthService`, `AdminService`, `RecordService`, `FileService`, `TodoService`, `LookupService`) live in `Goldata.Infrastructure` with Dapper, because almost every one needs its own transaction and `SELECT … FOR UPDATE`.
 
 **Before the first commit**, add `*.sql`, `goldataWeb1/**/connectDB*.php`, `goldataWeb1/**/DBController.php` and `goldataWeb1/**/login*.php` to `.gitignore`. The repo root is `~/Documents/git`, and the 77 MB dump contains payroll data.
 
@@ -600,6 +606,8 @@ return $u['display_name'];
 
 Base `/api/v1`, JSON camelCase, RFC 9457 Problem Details with `code` + zh-CN `title`.
 
+> **As built:** module routes are `/api/v1/modules/{key}…` (so module keys can't collide with `/admin`, `/files`, …). List filters: `q`, `year`, `includeClosed`, `sort=-col,col`, `f.{col}=` (contains), `nf.{col}=` (not contains), `from.{col}=` / `to.{col}=` (dates). `GET /modules` returns the metadata (fields with their Chinese labels) that drives the generic pages.
+
 ### 6.1 Module endpoints
 
 `{module}` ∈ `projects, budgets, contracts, receivable-applications, additionals, documents, settlements, projects-retail, quotes-retail, suppliers, buy-plans, buy-requests, buy-orders, buy-receipts, deliveries, sales-invoices, buy-invoices, receiveds, payments, labor-settlements, employees, payrolls, cost-estimates`.
@@ -759,10 +767,10 @@ export const theme = createTheme(
 | Dates | `DatePicker` (`AdapterDayjs`, `zh-cn`). `0000-00-00` shows as empty |
 | Forms | `TextField` and others via React Hook Form `Controller` + Zod. Errors in `helperText` |
 | Detail page | `Tabs` (基本信息 · 明细 · 关联记录 · 附件 · 转交历史 · 修改记录). Read view = `Grid` of label/value pairs |
-| Attachments | react-dropzone area + `LinearProgress`, file `List` with preview `Dialog` (pdf.js / image) |
+| Attachments | drag-and-drop area + `LinearProgress`, file `List` with preview `Dialog` (pdf.js / image) |
 | Link dialog, 409 dialog, confirm | `Dialog` |
 | 转交 history | `@mui/lab` `Timeline` |
-| Notifications | notistack `enqueueSnackbar` (success / API Problem Details `title`) |
+| Notifications | `useNotify()` (MUI `Snackbar` + `Alert`; success / API Problem Details `title`) |
 | Admin permission matrix (§8.3) | `Table` + `Checkbox` with grouped rows (not DataGrid), `ToggleButtonGroup` for the rank layer, `Chip` for sources |
 | Edit drawers (users) | `Drawer anchor="right"` |
 
@@ -840,7 +848,7 @@ DSM 7.1 has the older **Docker** package, not Container Manager (which arrived i
 | Docker Engine **20.10.x** (Synology build, older than 20.10.10) | Its default seccomp profile blocks the newer `clone3` syscall with `EPERM`. Recent **glibc** images (Ubuntu 24.04 / Debian 12, incl. the .NET chiseled images) can then fail to start threads. → Runtime images are **Alpine (musl)**, which doesn't use `clone3`. Fallback, if a glibc image is ever needed: `security_opt: seccomp=./seccomp-dsm71.json` (the Docker default profile with `clone3` → `ENOSYS`). **Never** `seccomp=unconfined`. |
 | Docker package is offered for x86_64 models (plus a few others) | Build `linux/amd64`. `arm64` is built only if the model needs it (Q14). |
 | Older kernel (4.4 on many models; 5.10 on newer ones) | Nothing kernel-specific is used. P0 smoke test on the real NAS. |
-| Compose `depends_on: condition: service_healthy` and file-based `secrets` behave slightly differently in compose v1 | Both are verified in the P0 smoke test. Fallbacks: plain `depends_on` (nginx retries the upstream), and secrets as read-only bind mounts of `./secrets` → `/run/secrets`. |
+| Compose `depends_on: condition: service_healthy` and `env_file` behave slightly differently in compose v1 (quotes are kept literally) | Verified in the P0 smoke test. Fallback: plain `depends_on` (nginx retries the upstream). The env-file format is restricted so v1 and v2 read it identically (§9.4). |
 | DSM 7.1 receives only limited updates | Plan an upgrade to DSM 7.2 (Container Manager, Docker 24, compose v2) after go-live. No change to images or compose file needed (Q14). |
 
 ### 9.1 Topology
@@ -888,84 +896,34 @@ DSM 7.1 has the older **Docker** package, not Container Manager (which arrived i
 * Offline alternative: `docker save` → copy to the NAS → `sudo docker load -i …` (or Docker package ▸ Image ▸ Add ▸ From file).
 * The images contain no secrets and no connection strings.
 
-### 9.4 Project folder on the NAS
+### 9.4 Project folder and settings: ONE env file per environment
+
+All settings of an environment, secrets included, are in **one** `KEY=value` file. Templates are committed and filled-in copies never are:
+
+| Environment | Template | Lives at | Read by |
+|---|---|---|---|
+| local (debug) | `deploy/env/local.env.example` | `deploy/env/local.env` (git-ignored) | `dotnet run` (launch profile `local` → `GOLDATA_ENV_FILE`), Vite proxy (`API_URL`), `compose.dev.yaml` (`--env-file`) |
+| UAT | `deploy/env/uat.env.example` | `/volume1/docker/goldata-uat/.env` | docker-compose (`${…}` + `env_file:` into the API), `goldata.sh` |
+| prod | `deploy/env/prod.env.example` | `/volume1/docker/goldata/.env` | docker-compose, `goldata.sh` |
 
 ```
 /volume1/docker/goldata/          (owner root, mode 750; included in Hyper Backup)
 ├─ compose.yaml
-├─ .env                           ← image tags, host paths, UID/GID (no passwords)
-├─ secrets/                       ← root:<DOC_GID>, dir 750 / files 640 (the container runs as DOC_UID), one value per file
-│  ├─ ConnectionStrings__Legacy
-│  ├─ ConnectionStrings__App
-│  ├─ ConnectionStrings__Migrator  ← used only by `--migrate`
-│  └─ Auth__TokenPepper
+├─ goldata.sh
+├─ .env                           ← THE settings file: root:root 600 (tags, ports, subnet, DB, documents, secrets, PHP, backups)
+├─ .env.prev                      ← written by `goldata.sh upgrade` (rollback)
 └─ data/
    ├─ keys/                       ← ASP.NET Data Protection keys (cookies/antiforgery survive restarts)
    └─ logs/                       ← Serilog rolling files, 14 days
 ```
 
-`compose.yaml` (abridged):
+* **One mapping in code:** `Goldata.Api/GoldataEnv.cs` turns the env keys into .NET configuration. It builds the three connection strings from `DB_HOST/DB_PORT/DB_LEGACY_NAME/DB_APP_NAME/DB_*_USER/DB_*_PASSWORD` (legacy `utf8` + zero dates, app `utf8mb4`), and maps `DOCUMENTS_*`, `TOKEN_PEPPER`, `PUBLIC_BASE_URL`, `SESSION_*`, `LOCKOUT_*`, `LOG_*`, etc. `appsettings.json` only holds defaults. Variables already in the process (shell, compose `environment:`) win over the file.
+* **Compose:** `env_file: .env` passes the file to the API container. `environment:` only overrides the in-container paths (`/data/docroot`, `/data/keys`, `/data/logs`) and `FORWARDED_NETWORKS=${NETWORK_SUBNET}`. Ports, subnet, project name, image tags and `DOC_ROOT/DOC_UID/DOC_GID` are `${…}` from the same file.
+* **PHP bridge:** `goldata.sh php-config` **generates** `PHP_AUTH_CONFIG` (`/volume1/web_config/goldata_auth.php`, owner `http`, 600) from the same `.env`. `goldata.sh backup-db` takes `DB_BACKUP_*` from it via a temporary root-only option file.
+* **Format** (docker-compose v1 reads values literally): `KEY=value`, no quotes, no spaces, comments on their own line, passwords from `[A-Za-z0-9-_.]`. `goldata.sh` reads the file line by line (no `source`), so `$` is never expanded. A unit test checks the three templates against these rules, and that UAT and prod differ in project, port, subnet, DB names, accounts, documents, pepper, PHP config and backup folder.
+* **Trade-off (accepted for consolidation):** secrets are environment variables of the API container (visible to root via `docker inspect`), and the container also receives keys it doesn't use (backup/PHP passwords). Mitigation: `.env` is root-only, Docker is root-only on the NAS, and each account has the least privileges (`db/ops`).
 
-```yaml
-# project name from .env: COMPOSE_PROJECT_NAME=goldata  (compose v1 has no top-level `name:`)
-services:
-  api:
-    image: ${REGISTRY}/goldata/goldata-api:${API_TAG}
-    restart: unless-stopped
-    user: "${DOC_UID}:${DOC_GID}"            # same owner as PHP's files (9.6)
-    environment:
-      ASPNETCORE_URLS: http://+:8080
-      TZ: Asia/Shanghai
-      Documents__RootPath: /data/docroot
-      Documents__MaxBytes: "83886080"
-      DataProtection__KeysPath: /data/keys
-      Serilog__File__Path: /data/logs/api-.log
-      ForwardedHeaders__KnownNetworks: 172.30.10.0/24
-    secrets: [ConnectionStrings__Legacy, ConnectionStrings__App, ConnectionStrings__Migrator, Auth__TokenPepper]
-    volumes:
-      - ${DOC_ROOT}:/data/docroot              # directory that CONTAINS pdf_folder
-      - ./data/keys:/data/keys
-      - ./data/logs:/data/logs
-    read_only: true
-    tmpfs: [/tmp]
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    mem_limit: 1g
-    healthcheck:
-      test: ["CMD", "/app/Goldata.Api", "--healthcheck"]   # no curl needed
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    networks: [goldata]
-
-  web:
-    image: ${REGISTRY}/goldata/goldata-web:${WEB_TAG}
-    restart: unless-stopped
-    depends_on:
-      api: { condition: service_healthy }
-    environment: { TZ: Asia/Shanghai }
-    ports: ["127.0.0.1:8085:8080"]          # only the DSM reverse proxy can reach it
-    read_only: true
-    tmpfs: [/tmp, /var/cache/nginx]
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    mem_limit: 128m
-    networks: [goldata]
-
-networks:
-  goldata:
-    ipam:
-      config: [{ subnet: 172.30.10.0/24 }]   # fixed, so the MariaDB grant can be narrow
-
-secrets:
-  ConnectionStrings__Legacy: { file: ./secrets/ConnectionStrings__Legacy }
-  ConnectionStrings__App:    { file: ./secrets/ConnectionStrings__App }
-  ConnectionStrings__Migrator: { file: ./secrets/ConnectionStrings__Migrator }
-  Auth__TokenPepper:         { file: ./secrets/Auth__TokenPepper }
-```
-
-* The API loads `/run/secrets` with `AddKeyPerFile(...)`, so each file name maps straight to a config key. No passwords go in `compose.yaml`, `.env`, the image or the Docker package UI.
-* `.env` example: `COMPOSE_PROJECT_NAME=goldata`, `REGISTRY=git.<domain>`, `API_TAG=1.4.0-3f2c1ab`, `WEB_TAG=1.4.0-3f2c1ab`, `DOC_ROOT=/volume1/web/goldata`, `DOC_UID=1023`, `DOC_GID=1023`.
+The full compose file is `deploy/compose.yaml`.
 
 `nginx.conf` (key parts):
 
@@ -981,9 +939,9 @@ The API uses `ForwardedHeaders` (trusting only the compose subnet), so it sees t
 
 ### 9.5 Database connectivity
 
-* Connection string host = the NAS LAN IP (`192.168.168.235`, port 3307). From a bridge-network container the DB sees the source address as `172.30.10.x`, **not** localhost:
+* Connection string host = the production NAS `192.168.168.235`, port 3307 (Q3 resolved). `192.168.21.175` is the local/test server (DB copy, `pdf_folder` copy). From a bridge-network container the DB sees the source address as `172.30.10.x`, **not** localhost:
   ```sql
-  CREATE USER 'goldata_api'@'172.30.10.%' IDENTIFIED BY '<from secrets file>';
+  CREATE USER 'goldata_api'@'172.30.10.%' IDENTIFIED BY '<DB_API_PASSWORD from .env>';
   GRANT SELECT, INSERT, UPDATE, DELETE ON goldata.*     TO 'goldata_api'@'172.30.10.%';
   GRANT SELECT, INSERT, UPDATE, DELETE ON goldata_app.* TO 'goldata_api'@'172.30.10.%';
   ```
@@ -1073,3 +1031,25 @@ The API uses `ForwardedHeaders` (trusting only the compose subnet), so it sees t
 5. Import the 22 users and 10 roles from `login.php`. Verify a bcrypt login and the forced password change. Deploy the PHP login bridge (§5.5) and run its test table. Ship the 用户 tab (list, add, disable, reset password) and the 角色与权限 matrix, and check the seeded matrix reproduces today's menu for each of the 22 users (preview-as-user).
 6. Build the module registry for 2 modules (contracts, buy_orders) end-to-end, including links, files, audit and 转交. Run the compatibility test against PHP.
 7. Stand up `/mcp` with `search_records` + `get_record`, and connect from Claude Code.
+
+---
+
+## 13. Implementation status (2026-11-02)
+
+| Area | Built | Still to do |
+|---|---|---|
+| Solution, CI | 5 projects + tests; central package versions with a banned list; Gitea Actions workflow (tests, NuGet + npm licence allow-lists, image build on tags) | Run CI on the real Gitea runner |
+| DB | `db/` scripts ops 0001–0003, migrations 0001–0004; DbUp runner `--migrate` (journals in `goldata_app`) | Run on MariaDB 10.3.32 (no DB on the build machine) |
+| Auth | Cookie session + security-stamp check per request, antiforgery header, lockout, login audit, forced first password change, bcrypt `$2y$12$` (PHP-compatible), legacy `$2y$10$` verify + rehash | Rate limits tuned on the NAS |
+| Users / roles (M29) | All §6.3 endpoints with §5.4 rules (last admin, self-change, open to-dos, name lock, read-only roles, dry-run diff, 恢复默认, audit); React 用户 / 角色与权限 / 操作日志 tabs | Ranks admin UI (API exists) |
+| Legacy read | Generic list (paging, sort, search, year, closed toggle, totals), detail (+ items, ETag), change log, 转交 history, to-dos (mine/others), global search, lookups, staff | Per-module create/edit (P1+), links, reports, inventory, catalogue |
+| Files | List, download (RFC 5987 names, ranges), upload (validation, magic bytes, conflict reject/rename, temp + rename, `file_path` + audit), delete to `_recycle` | Round-trip test with PHP on the real share |
+| MCP | `/mcp` Streamable HTTP (stateless), bearer PAT, scopes, HR hidden by default; tools `list_modules`, `search_records`, `get_record`, `list_records`, `get_history`, `my_todos`, `list_lookup`; token page in the UI | Write tools (P3), `read_document_text` |
+| PHP | `legacy-php/overlay`: login bridge, revalidation, banner, hot-fixes for `crud_action.php`, `delete_file.php`, `dropdown/ajax/*` | `php -l` and the test table on the NAS |
+| Deploy | Alpine API image, nginx web image, `compose.yaml` (compose v1+v2), `goldata.sh`, `seccomp-dsm71.json`, runbook | P0 smoke test on DSM 7.1 |
+| Tests | 80 unit + pipeline tests (ENT_COMPAT, list SQL whitelist/params, permissions incl. legacy rules, 0004 drift, login.php parser, bcrypt, paths/NFC/traversal, 401/CSRF/MCP guards) | Integration tests on a MariaDB 10.3 Testcontainer (needs Docker) |
+
+### 9.10 UAT beside prod
+
+UAT runs on the same NAS as a second compose project (`/volume1/docker/goldata-uat`, `COMPOSE_PROJECT_NAME=goldata-uat`, port 8086, subnet `172.30.11.0/24`) with its own databases on the same MariaDB (`goldata_uat`, `goldata_app_uat`), its own accounts (`goldata_uat_*`, **no rights on prod**, `db/ops/0004`), its own copy of `pdf_folder` outside the `web` share (`DOC_ROOT=/volume1/goldata-uat`, never served by Web Station) and its own `TOKEN_PEPPER` (prod tokens don't work on UAT). `ASPNETCORE_ENVIRONMENT=Staging`. Data is refreshed by copying prod (runbook §16); because UAT then holds production personal data, it is protected like prod (Q21).
+
