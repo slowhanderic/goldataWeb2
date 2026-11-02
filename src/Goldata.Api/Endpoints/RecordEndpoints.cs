@@ -63,6 +63,22 @@ public static class RecordEndpoints
             return Results.NoContent();
         });
 
+        // ---- links (REQ-LINK-1/2): the legacy link-create.php codes are the ids ----
+        g.MapGet("/modules/{key}/{id:long}/links", async (string key, long id, HttpCurrentUser u, LinkService l, CancellationToken ct) =>
+            Results.Ok(await l.ForRecordAsync(key, id, u, ct)));
+        g.MapGet("/links/{code}/candidates", async (string code, long fromId, string? q, bool? includeClosed, HttpCurrentUser u, LinkService l,
+            CancellationToken ct) => Results.Ok(await l.CandidatesAsync(code, fromId, q, includeClosed == true, u, ct)));
+        g.MapPost("/links/{code}", async (string code, LinkBody b, HttpCurrentUser u, LinkService l, CancellationToken ct) =>
+        {
+            await l.CreateAsync(code, b.FromId, b.ToId, b.ShareAmount, u, ct);
+            return Results.NoContent();
+        });
+        g.MapDelete("/links/{code}/{fromId:long}", async (string code, long fromId, long? linkId, HttpCurrentUser u, LinkService l, CancellationToken ct) =>
+        {
+            await l.DeleteAsync(code, fromId, linkId, u, ct);
+            return Results.NoContent();
+        });
+
         g.MapGet("/modules/{key}/{id:long}/logs", async (string key, long id, HttpCurrentUser u, RecordService records, CancellationToken ct) =>
             Results.Ok(await records.LogsAsync(key, id, u, ct)));
 
@@ -115,6 +131,7 @@ public static class RecordEndpoints
     }
 
     public sealed record SaveBody(Dictionary<string, string?>? Values, string? ParentModule, long? ParentId);
+    public sealed record LinkBody(long FromId, long ToId, string? ShareAmount);
     public sealed record HandoverBody(string? StatusTo, string? PersonTo, string? Comment);
 
     public static ListRequest ParseList(IQueryCollection q)

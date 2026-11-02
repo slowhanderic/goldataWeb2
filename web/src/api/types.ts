@@ -106,3 +106,12 @@ export interface RoleMatrix { layers: Record<string, string[]>; rowVersion: numb
 export interface MatrixDiff { added: string[]; removed: string[]; affectedUsers: string[]; sensitive: boolean }
 export interface DeleteCheck { openTodos: { module: string; moduleTitle: string; recordId: number }[]; activeTokens: number; lastLoginAt: string | null; inStaffLookup: boolean }
 export interface AdminAuditEntry { id: number; actorName: string; action: string; targetType: string; targetId: number | null; targetName: string | null; beforeJson: string | null; afterJson: string | null; ip: string | null; at: string }
+
+// ---- links (REQ-LINK) ----
+export interface LinkTypeInfo {
+  code: string; title: string; fromModule: string; toModule: string; otherModule: string; otherTitle: string
+  kind: 'share' | 'fk'; shareLabel: string; canEdit: boolean
+}
+export interface LinkEntry { linkId: number; otherId: number; otherTitle: string; share: number | null }
+export interface LinkGroup { type: LinkTypeInfo; direction: 'out' | 'in'; items: LinkEntry[]; allocated: number | null; amount: number | null }
+export interface LinkCandidate { id: number; title: string; status: string | null; amount: number | null; allocated: number | null; alreadyLinked: boolean }

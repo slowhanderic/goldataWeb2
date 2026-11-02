@@ -21,6 +21,7 @@ import { useNotify } from '../components/Notify'
 import StatusChip from '../components/StatusChip'
 import RecordForm from '../components/RecordForm'
 import HandoverDialog from '../components/HandoverDialog'
+import LinksPanel from '../components/LinksPanel'
 import { formatBytes, formatMoney, formatValue } from '../utils/format'
 import { amountSx } from '../theme'
 
@@ -113,7 +114,7 @@ function RecordView({ m, id }: { m: ModuleMeta; id: number }) {
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" sx={{ borderBottom: 1, borderColor: 'divider', px: 1 }}>
           <Tab value="info" label="基本信息" />
           {m.hasItems && <Tab value="items" label={`${m.itemsLabel ?? '明细'}（${d.items.length}）`} />}
-          {(relatedCount > 0 || (related.data?.parents.length ?? 0) > 0) && <Tab value="related" label={`关联记录（${relatedCount}）`} />}
+          <Tab value="related" label={relatedCount > 0 ? `关联记录（${relatedCount}）` : '关联记录'} />
           {m.fileSlots.length > 0 && <Tab value="files" label={`附件（${files.data?.length ?? 0}）`} />}
           {m.workflow && <Tab value="history" label="转交历史" />}
           <Tab value="logs" label="修改记录" />
@@ -121,7 +122,12 @@ function RecordView({ m, id }: { m: ModuleMeta; id: number }) {
         <Box sx={{ p: 2 }}>
           {tab === 'info' && <InfoGrid m={m} record={d.record} parents={related.data?.parents ?? []} />}
           {tab === 'items' && <ItemsGrid m={m} items={d.items} />}
-          {tab === 'related' && <RelatedPanel related={related.data} />}
+          {tab === 'related' && (
+            <Stack spacing={3}>
+              <LinksPanel moduleKey={m.key} id={id} />
+              <RelatedPanel related={related.data} />
+            </Stack>
+          )}
           {tab === 'files' && <FilesPanel m={m} id={id} files={files.data ?? []} />}
           {tab === 'history' && <HistoryPanel m={m} id={id} />}
           {tab === 'logs' && <LogsPanel m={m} id={id} />}
