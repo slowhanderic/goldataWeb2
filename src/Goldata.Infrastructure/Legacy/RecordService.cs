@@ -21,7 +21,12 @@ public sealed record ModuleMeta(
     string Key, string Title, string Group, string GroupLabel, string[] TitleColumns, string? StatusColumn, string[] ClosedValues,
     string? YearColumn, string DefaultSort, string[] Totals, bool Workflow, bool HasItems, string? ItemsLabel,
     IReadOnlyList<FileSlot> FileSlots, IReadOnlyList<FieldMeta> Fields, IReadOnlyList<FieldMeta> ItemFields, IReadOnlyList<string> Actions,
-    IReadOnlyList<EditFieldMeta> EditFields, string? StatusLookup, IReadOnlyList<CreateLink> CreateFrom, IReadOnlyList<CreateLink> CreateChildren);
+    IReadOnlyList<EditFieldMeta> EditFields, string? StatusLookup, IReadOnlyList<CreateLink> CreateFrom, IReadOnlyList<CreateLink> CreateChildren,
+    ItemEditMeta? ItemEdit);
+
+/// <summary>Editable line-item grid (REQ-EDIT-3).</summary>
+public sealed record ItemEditMeta(IReadOnlyList<ItemFieldMeta> Fields, string? SubTotal, string? HeaderTotal);
+public sealed record ItemFieldMeta(string Name, string Label, string Kind);
 
 /// <summary>An editable field for the generic form (from the legacy edit page).</summary>
 public sealed record EditFieldMeta(string Name, string Label, string Input, string? Lookup, bool Required);
@@ -37,7 +42,7 @@ public sealed record LogEntry(int Id, string User, string Tag, string SqlText, s
 public sealed record HistoryEntry(int Id, string PersonFrom, string PersonTo, string StatusFrom, string StatusTo, string Comment, string Timestamp);
 
 /// <summary>Generic read access to the legacy module tables (REQ-LIST, REQ-EDIT-4, REQ-AUD-3). Writes come per module in P1+.</summary>
-public sealed class RecordService(Db db, SchemaCache schemas, SettingsService settings)
+public sealed class RecordService(Db db, SchemaCache schemas, SettingsService settings, CatalogueService catalogue)
 {
     /// <summary>Checks the module read permission and the MCP HR rule (REQ-MCP-5).</summary>
     public async Task<ModuleDefinition> AuthorizeAsync(string key, ICurrentUser user, string action = "read", CancellationToken ct = default)
@@ -58,7 +63,7 @@ public sealed class RecordService(Db db, SchemaCache schemas, SettingsService se
             if (!m.Generic)
             {
                 result.Add(new(m.Key, m.Title, m.Group.ToString(), MenuGroups.Label(m.Group), [], null, [], null, "", [], false, false,
-                    null, [], [], [], actions, [], null, [], []));
+                    null, [], [], [], actions, [], null, [], [], null));
                 continue;
             }
             var schema = await schemas.GetAsync(m.Table, ct);
@@ -77,9 +82,20 @@ public sealed class RecordService(Db db, SchemaCache schemas, SettingsService se
             result.Add(new(m.Key, m.Title, m.Group.ToString(), MenuGroups.Label(m.Group), m.TitleColumns, m.StatusColumn, m.ClosedValues,
                 m.YearColumn, m.DefaultSort, m.Totals, m.Workflow, m.Items is not null, m.Items?.Label, m.Files,
                 ListQueryBuilder.VisibleColumns(m, schema).Select(ToMeta).ToList(), itemFields, actions,
-                editFields, ModuleFields.StatusLookups.GetValueOrDefault(m.Table), createFrom, children));
+                editFields, ModuleFields.StatusLookups.GetValueOrDefault(m.Table), createFrom, children, await ItemEditAsync(m, ct)));
         }
         return result;
+    }
+
+    private async Task<ItemEditMeta?> ItemEditAsync(ModuleDefinition m, CancellationToken ct)
+    {
+        if (Application.Items.ItemSpecs.For(m.Key) is not { } spec) return null;
+        var schema = await schemas.GetAsync(spec.Table, ct);
+        var fields = spec.Fields.Where(f => schema.Find(f.Column) is not null)
+            .Select(f => new ItemFieldMeta(f.Column, f.Kind == Application.Items.ItemFieldKind.Product ? "产品" : f.Kind == Application.Items.ItemFieldKind.Destination ? "进库目的地" : schema.Find(f.Column)!.Label,
+                f.Kind.ToString().ToLowerInvariant()))
+            .ToList();
+        return new ItemEditMeta(fields, spec.SubTotal, spec.HeaderTotal);
     }
 
     private static FieldMeta ToMeta(ColumnInfo c) => new(c.Name, c.Label, c.Kind.ToString().ToLowerInvariant());
@@ -145,7 +161,17 @@ public sealed class RecordService(Db db, SchemaCache schemas, SettingsService se
                 .Select(r => RowMapper.Map((object)r, itemSchema)).ToList();
         }
 
-        return new RecordDetail(record, RowMapper.Title(record, m.TitleColumns, id), items, ETag(record, items));
+        var etag = ETag(record, items);   // computed on the stored values only, before display enrichment
+        // Display: the product's catalogue path (类别 / 细类 / 品名 / 型号) for each line.
+        var productIds = items.Select(i => i.GetValueOrDefault("product_id")).OfType<object>().Select(Convert.ToInt64).Where(x => x > 0).ToList();
+        if (productIds.Count > 0)
+        {
+            var products = await catalogue.GetManyAsync(productIds, ct);
+            foreach (var line in items)
+                if (line.GetValueOrDefault("product_id") is { } pv && products.TryGetValue(Convert.ToInt64(pv), out var prod))
+                    line["_product"] = prod.Path;
+        }
+        return new RecordDetail(record, RowMapper.Title(record, m.TitleColumns, id), items, etag);
     }
 
     /// <summary>SHA-256 of the canonical row JSON: <c>timestamp</c> is a create time, so it can't be a row version (002-spec §3.4).</summary>

@@ -23,6 +23,7 @@
 | 3.7 | 2026-11-02 | NFR-DEP-10: deployment runbook `deploy/DEPLOYMENT.md`, kept current. NFR-DEP-5 wording on secrets file permissions. |
 | 3.8 | 2026-11-02 | Implementation started (spec §13). New decisions to confirm: Q17–Q20. |
 | 3.9 | 2026-11-02 | One env file per environment (local / UAT / prod): NFR-DEP-5 rewritten, NFR-DEP-11 (UAT). Q21. |
+| 3.14 | 2026-11-02 | REQ-EDIT-3 (grids for 订单/计划/请购/收货/人工费) and REQ-LINK-3 implemented; delivery (Q5), payroll and quote grids still open. |
 | 3.13 | 2026-11-02 | REQ-LINK-1/2 implemented: all 30 link types with allocated/unallocated amounts. |
 | 3.12 | 2026-11-02 | P1 started: create/edit/delete/转交 for all modules with a legacy edit page (REQ-EDIT-1/2/4/5/6, REQ-WF-1/2, REQ-DEL); links, items, reports still open. |
 | 3.11 | 2026-11-02 | Q3 resolved: prod 192.168.168.235, local/test 192.168.21.175. |

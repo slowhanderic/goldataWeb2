@@ -63,6 +63,27 @@ public static class RecordEndpoints
             return Results.NoContent();
         });
 
+        // ---- line items + catalogue + conversions (REQ-EDIT-3, REQ-LINK-3) ----
+        g.MapPut("/modules/{key}/{id:long}/items", async (string key, long id, ItemsBody b, HttpContext http, HttpCurrentUser u, ItemService s,
+            CancellationToken ct) =>
+        {
+            var r = await s.SaveAsync(key, id, b.Items ?? [], b.DeletedIds ?? [], http.Request.Headers.IfMatch.ToString(), u, ct);
+            http.Response.Headers.ETag = r.ETag;
+            return Results.Ok(r);
+        });
+        g.MapGet("/catalogue/search", async (string? q, int? limit, CatalogueService c, CancellationToken ct) =>
+            Results.Ok(await c.SearchAsync(q, limit ?? 30, ct)));
+        g.MapGet("/catalogue/children", async (long? parentId, CatalogueService c, CancellationToken ct) =>
+            Results.Ok(await c.ChildrenAsync(parentId, ct)));
+        g.MapGet("/catalogue/products", async (string ids, CatalogueService c, CancellationToken ct) =>
+            Results.Ok((await c.GetManyAsync(ids.Split(',').Select(x => long.TryParse(x, out var v) ? v : 0).Where(v => v > 0), ct)).Values));
+        g.MapPost("/conversions/plan-items-to-order", async (ConvertBody b, HttpCurrentUser u, ItemService s, CancellationToken ct) =>
+            Results.Ok(new { copied = await s.PlanItemsToOrderAsync(b.ItemIds ?? [], b.BuyOrderId, u, ct) }));
+        g.MapPost("/conversions/request-items-to-order", async (ConvertBody b, HttpCurrentUser u, ItemService s, CancellationToken ct) =>
+            Results.Ok(new { copied = await s.RequestItemsToOrderAsync(b.ItemIds ?? [], b.BuyOrderId, b.Variant == "report", u, ct) }));
+        g.MapPost("/conversions/order-to-receipt", async (ReceiptBody b, HttpCurrentUser u, ItemService s, CancellationToken ct) =>
+            Results.Ok(new { id = await s.OrderToReceiptAsync(b.BuyOrderId, b.Values ?? [], u, ct) }));
+
         // ---- links (REQ-LINK-1/2): the legacy link-create.php codes are the ids ----
         g.MapGet("/modules/{key}/{id:long}/links", async (string key, long id, HttpCurrentUser u, LinkService l, CancellationToken ct) =>
             Results.Ok(await l.ForRecordAsync(key, id, u, ct)));
@@ -131,6 +152,9 @@ public static class RecordEndpoints
     }
 
     public sealed record SaveBody(Dictionary<string, string?>? Values, string? ParentModule, long? ParentId);
+    public sealed record ItemsBody(List<ItemInput>? Items, List<long>? DeletedIds);
+    public sealed record ConvertBody(List<long>? ItemIds, long BuyOrderId, string? Variant);
+    public sealed record ReceiptBody(long BuyOrderId, Dictionary<string, string?>? Values);
     public sealed record LinkBody(long FromId, long ToId, string? ShareAmount);
     public sealed record HandoverBody(string? StatusTo, string? PersonTo, string? Comment);
 

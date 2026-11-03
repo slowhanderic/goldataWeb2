@@ -13,7 +13,7 @@ import SendIcon from '@mui/icons-material/SendOutlined'
 import AddIcon from '@mui/icons-material/Add'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, fileUrl, upload } from '../api/client'
-import type { DependentRef, FileEntry, HistoryEntry, LogEntry, ModuleMeta, ParentRef, RecordDetail, RelatedResult } from '../api/types'
+import type { DependentRef, FileEntry, HistoryEntry, LogEntry, ModuleMeta, ParentRef, RecordDetail, RelatedResult, Row } from '../api/types'
 import { useModule, useModules } from '../api/useModules'
 import { useAuth } from '../auth/AuthContext'
 import Confirm from '../components/Confirm'
@@ -22,6 +22,8 @@ import StatusChip from '../components/StatusChip'
 import RecordForm from '../components/RecordForm'
 import HandoverDialog from '../components/HandoverDialog'
 import LinksPanel from '../components/LinksPanel'
+import ItemsEditor from '../components/ItemsEditor'
+import { CopyToOrderDialog, ReceiptFromOrderDialog } from '../components/ConvertDialogs'
 import { formatBytes, formatMoney, formatValue } from '../utils/format'
 import { amountSx } from '../theme'
 
@@ -45,6 +47,7 @@ function RecordView({ m, id }: { m: ModuleMeta; id: number }) {
   const [child, setChild] = useState<ModuleMeta | null>(null)
   const [childMenu, setChildMenu] = useState<HTMLElement | null>(null)
   const [deleting, setDeleting] = useState<DependentRef[] | null>(null)
+  const [receipt, setReceipt] = useState(false)
   const modules = useModules()
   const detail = useQuery({ queryKey: ['record', m.key, id], queryFn: () => api<RecordDetail>(`/modules/${m.key}/${id}`) })
   const files = useQuery({ queryKey: ['files', m.key, id], queryFn: () => api<FileEntry[]>(`/modules/${m.key}/${id}/files`), enabled: m.fileSlots.length > 0 })
@@ -108,6 +111,7 @@ function RecordView({ m, id }: { m: ModuleMeta; id: number }) {
             </Menu>
           </>
         )}
+        {m.key === 'buy-orders' && can('buy-receipts:create') && <Button variant="outlined" onClick={() => setReceipt(true)}>生成收货单</Button>}
         {can(`${m.key}:delete`) && <Button color="error" startIcon={<DeleteIcon />} onClick={startDelete}>删除</Button>}
       </Box>
       <Paper variant="outlined">
@@ -121,7 +125,7 @@ function RecordView({ m, id }: { m: ModuleMeta; id: number }) {
         </Tabs>
         <Box sx={{ p: 2 }}>
           {tab === 'info' && <InfoGrid m={m} record={d.record} parents={related.data?.parents ?? []} />}
-          {tab === 'items' && <ItemsGrid m={m} items={d.items} />}
+          {tab === 'items' && <ItemsGrid m={m} id={id} items={d.items} eTag={d.eTag} onChanged={reload} />}
           {tab === 'related' && (
             <Stack spacing={3}>
               <LinksPanel moduleKey={m.key} id={id} />
@@ -146,6 +150,7 @@ function RecordView({ m, id }: { m: ModuleMeta; id: number }) {
         <RecordForm module={child} parent={{ module: m.key, id, title: `${m.title}：${d.title}` }} onClose={() => setChild(null)}
           onSaved={(r) => { const k = child.key; setChild(null); reload(); navigate(`/m/${k}/${r.id}`) }} />
       )}
+      {receipt && <ReceiptFromOrderDialog orderId={id} onClose={() => setReceipt(false)} />}
       {deleting && (
         deleting.length > 0 ? (
           <Confirm open title="不能删除" confirmText="知道了" onClose={() => setDeleting(null)} onConfirm={() => setDeleting(null)}>
@@ -205,17 +210,43 @@ function InfoGrid({ m, record, parents }: { m: ModuleMeta; record: Record<string
   )
 }
 
-function ItemsGrid({ m, items }: { m: ModuleMeta; items: Record<string, unknown>[] }) {
-  const cols: GridColDef[] = m.itemFields
-    .filter((f) => f.name !== 'timestamp' && !f.name.endsWith('_id'))
-    .map((f) =>
-      f.kind === 'money'
-        ? { field: f.name, headerName: f.label, type: 'number', minWidth: 90, valueFormatter: (v) => (f.name.includes('qty') ? v : formatMoney(v)), cellClassName: 'amount' }
-        : { field: f.name, headerName: f.label, minWidth: 90, flex: f.name === 'item' || f.name === 'item_comment' ? 2 : 1 },
-    )
+function ItemsGrid({ m, id, items, eTag, onChanged }: { m: ModuleMeta; id: number; items: Row[]; eTag: string; onChanged: () => void }) {
+  const { can } = useAuth()
+  const [editing, setEditing] = useState(false)
+  const [selected, setSelected] = useState<number[]>([])
+  const [copying, setCopying] = useState(false)
+  const convertible = (m.key === 'buy-plans' || m.key === 'buy-requests') && can('buy-orders:update')
+  const legacyText = new Set(['item', 'cat', 'type'])   // pre-catalogue columns, superseded by product_id
+  const cols: GridColDef[] = [
+    ...(items.some((i) => i._product) ? [{ field: '_product', headerName: '产品（类别 / 细类 / 品名 / 型号）', minWidth: 260, flex: 3 } as GridColDef] : []),
+    ...m.itemFields
+      .filter((f) => f.name !== 'timestamp' && !f.name.endsWith('_id') && !(legacyText.has(f.name) && items.some((i) => i._product)))
+      .map((f): GridColDef =>
+        f.kind === 'money'
+          ? { field: f.name, headerName: f.label, type: 'number', minWidth: 90, valueFormatter: (v) => (/qty|count|priority/.test(f.name) ? v : formatMoney(v)), cellClassName: 'amount' }
+          : { field: f.name, headerName: f.label, minWidth: 90, flex: f.name === 'item_comment' ? 2 : 1 },
+      ),
+  ]
+  if (editing)
+    return <ItemsEditor m={m} recordId={id} items={items} eTag={eTag} onCancel={() => setEditing(false)} onConflict={onChanged}
+      onSaved={() => { setEditing(false); onChanged() }} />
   return (
-    <Box sx={{ height: 480, '& .amount': amountSx }}>
-      <DataGrid density="compact" rows={items as { id: number }[]} columns={cols} disableRowSelectionOnClick pageSizeOptions={[50, 100]} />
+    <Box>
+      <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+        {m.itemEdit && can(`${m.key}:update`) && <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setEditing(true)}>编辑明细</Button>}
+        {convertible && (
+          <Button variant="outlined" disabled={selected.length === 0} onClick={() => setCopying(true)}>
+            复制所选 {selected.length || ''} 行到订单…
+          </Button>
+        )}
+        {!m.itemEdit && <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>该单据的明细暂在旧系统中编辑。</Typography>}
+      </Box>
+      <Box sx={{ height: 480, '& .amount': amountSx }}>
+        <DataGrid density="compact" rows={items as { id: number }[]} columns={cols} disableRowSelectionOnClick pageSizeOptions={[50, 100]}
+          checkboxSelection={convertible}
+          onRowSelectionModelChange={(model) => setSelected([...model.ids].map(Number))} />
+      </Box>
+      {copying && <CopyToOrderDialog source={m.key as 'buy-plans' | 'buy-requests'} itemIds={selected} onClose={() => setCopying(false)} />}
     </Box>
   )
 }

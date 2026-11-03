@@ -41,7 +41,13 @@ export interface ModuleMeta {
   statusLookup: string | null
   createFrom: CreateLink[]
   createChildren: CreateLink[]
+  itemEdit: ItemEditMeta | null
 }
+
+export type ItemFieldKind = 'product' | 'text' | 'number' | 'money' | 'date' | 'int' | 'destination'
+export interface ItemFieldMeta { name: string; label: string; kind: ItemFieldKind }
+export interface ItemEditMeta { fields: ItemFieldMeta[]; subTotal: string | null; headerTotal: string | null }
+export interface Product { id: number; cat: string; subCat: string; item: string; type: string; unit: string; path: string }
 
 export type EditInput = 'text' | 'textarea' | 'date' | 'money' | 'select' | 'staff'
 export interface EditField { name: string; label: string; input: EditInput; lookup: string | null; required: boolean }
